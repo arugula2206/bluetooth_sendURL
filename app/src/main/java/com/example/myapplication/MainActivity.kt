@@ -1,10 +1,13 @@
 package com.example.myapplication
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
-import android.content.Context
 import android.content.pm.PackageManager
+import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -16,8 +19,6 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.BroadcastReceiver
-import android.content.Intent
-import android.content.IntentFilter
 
 class MainActivity : AppCompatActivity() {
     companion object {
@@ -29,17 +30,10 @@ class MainActivity : AppCompatActivity() {
     private var bluetoothAdapter: BluetoothAdapter? = null
     private var bluetoothSocket: BluetoothSocket? = null
     private var isConnected: Boolean = false
-    private var timerTask: TimerTask? = null
-    //private val discoveredDevices = mutableListOf<BluetoothDevice>()
+    private lateinit var urlReceiver: BroadcastReceiver
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // OpenGLレンダラーの変更
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            System.setProperty("angle.renderer", "angle")
-        }
-
         setContentView(R.layout.activity_main)
 
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -51,6 +45,26 @@ class MainActivity : AppCompatActivity() {
         }
 
         requestBluetoothPermissions()
+        handleIncomingIntent(intent)
+
+        // BroadcastReceiverの設定
+        urlReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                val url = intent?.getStringExtra("url")
+                Log.d("MainActivity", "Received URL: $url")
+                url?.let {
+                    sendUrl(it)
+                }
+            }
+        }
+
+        // インテントフィルタを設定してレシーバーを登録
+        val filter = IntentFilter("com.example.myapplication.SEND_URL")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            registerReceiver(urlReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(urlReceiver, filter)
+        }
     }
 
     private fun requestBluetoothPermissions() {
@@ -104,23 +118,6 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     Toast.makeText(this, "Bluetooth connected", Toast.LENGTH_SHORT).show()
                 }
-                timerTask = object : TimerTask() {
-                    override fun run() {
-                        try {
-                            bluetoothSocket?.outputStream?.write("1".toByteArray())
-                            runOnUiThread {
-                                Toast.makeText(this@MainActivity, "Message '1' sent", Toast.LENGTH_SHORT).show()
-                            }
-                        } catch (e: IOException) {
-                            isConnected = false
-                            runOnUiThread {
-                                Toast.makeText(this@MainActivity, "Failed to send message", Toast.LENGTH_SHORT).show()
-                            }
-                            cancel()
-                        }
-                    }
-                }
-                Timer().schedule(timerTask, 0, 1000)
             } else {
                 runOnUiThread {
                     Toast.makeText(this, "Bluetooth permission is required", Toast.LENGTH_SHORT).show()
@@ -171,10 +168,41 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun handleIncomingIntent(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_SEND && intent.type == "text/plain") {
+            val url = intent.getStringExtra(Intent.EXTRA_TEXT)
+            url?.let {
+                Log.d("MainActivity", "Received URL: $it")
+                sendUrl(it)
+            }
+        }
+    }
+
+    private fun sendUrl(url: String) {
+        if (isConnected && bluetoothSocket != null) {
+            try {
+                Log.d("MainActivity", "Sending URL: $url")
+                bluetoothSocket?.outputStream?.write(url.toByteArray())
+                runOnUiThread {
+                    Toast.makeText(this, "URL sent: $url", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: IOException) {
+                runOnUiThread {
+                    Toast.makeText(this, "Failed to send URL", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            Toast.makeText(this, "Bluetooth is not connected", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIncomingIntent(intent)
+    }
 
     override fun onDestroy() {
         super.onDestroy()
-        timerTask?.cancel()
         try {
             bluetoothSocket?.close()
         } catch (e: IOException) {
@@ -182,6 +210,11 @@ class MainActivity : AppCompatActivity() {
         }
         try {
             unregisterReceiver(receiver)
+        } catch (e: IllegalArgumentException) {
+            // Receiver not registered
+        }
+        try {
+            unregisterReceiver(urlReceiver)
         } catch (e: IllegalArgumentException) {
             // Receiver not registered
         }
