@@ -29,7 +29,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val REQUEST_BLUETOOTH_CONNECT = 100 //複数のパーミッションをリクエストするときに、判別するために設定
         private val MY_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
-        private const val DEVICE_ADDRESS = "38:D5:7A:02:47:C2"  // Python側(PC)のMACアドレス
+        private const val DEVICE_ADDRESS = "xx:xx:xx:xx:xx:xx"  // Python側(PC)のMACアドレス
     }
 
     private var bluetoothAdapter: BluetoothAdapter? = null
